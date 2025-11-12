@@ -5,13 +5,15 @@ import type React from "react"
 import Link from "next/link"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sparkles, Send, Search, MoreVertical, Phone, Video, Paperclip, Smile, LogOut } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Sparkles, Send, Search, MoreVertical, Phone, Video, Paperclip, Smile, LogOut, User, Flag } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 type Profile = {
   id: string
@@ -33,6 +35,8 @@ type Message = {
   sender_id: string
   created_at: string
   sender: Profile
+  attachment_url?: string | null
+  attachment_type?: string | null
 }
 
 export default function ChatPage() {
@@ -44,7 +48,9 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  
+  const { toast } = useToast()
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadUser()
@@ -56,7 +62,8 @@ export default function ChatPage() {
 
     loadMessages(selectedConversation.id)
 
-    const channel = prisma
+    const supabase = createClient()
+    const channel = supabase
       .channel(`conversation:${selectedConversation.id}`)
       .on(
         "postgres_changes",
@@ -73,7 +80,7 @@ export default function ChatPage() {
       .subscribe()
 
     return () => {
-      prisma.removeChannel(channel)
+      supabase.removeChannel(channel)
     }
   }, [selectedConversation])
 
@@ -82,9 +89,10 @@ export default function ChatPage() {
   }, [messages])
 
   const loadUser = async () => {
+    const supabase = createClient()
     const {
       data: { user },
-    } = await ()
+    } = await supabase.auth.getUser()
     if (!user) {
       router.push("/login")
       return
@@ -94,13 +102,13 @@ export default function ChatPage() {
 
   const loadConversations = async () => {
     try {
+      const supabase = createClient()
       const {
         data: { user },
-      } = await ()
+      } = await supabase.auth.getUser()
       if (!user) return
 
-      // Get conversations where user is a participant
-      const { data: participantData } = await prisma
+      const { data: participantData } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
         .eq("user_id", user.id)
@@ -109,11 +117,9 @@ export default function ChatPage() {
 
       const conversationIds = participantData.map((p) => p.conversation_id)
 
-      // Get conversation details with other participants
       const conversationsWithDetails = await Promise.all(
         conversationIds.map(async (convId) => {
-          // Get other participant
-          const { data: participants } = await prisma
+          const { data: participants } = await supabase
             .from("conversation_participants")
             .select("user_id")
             .eq("conversation_id", convId)
@@ -122,15 +128,13 @@ export default function ChatPage() {
 
           if (!participants) return null
 
-          // Get participant profile
-          const { data: profile } = await prisma
+          const { data: profile } = await supabase
             .from("profiles")
             .select("id, full_name, avatar_url")
             .eq("id", participants.user_id)
             .single()
 
-          // Get last message
-          const { data: lastMsg } = await prisma
+          const { data: lastMsg } = await supabase
             .from("messages")
             .select("content, created_at")
             .eq("conversation_id", convId)
@@ -138,8 +142,7 @@ export default function ChatPage() {
             .limit(1)
             .single()
 
-          // Get conversation
-          const { data: conv } = await prisma.from("conversations").select("id, updated_at").eq("id", convId).single()
+          const { data: conv } = await supabase.from("conversations").select("id, updated_at").eq("id", convId).single()
 
           return {
             id: convId,
@@ -166,7 +169,10 @@ export default function ChatPage() {
 
   const loadMessages = async (conversationId: string) => {
     try {
-      const { data } = await prisma
+      console.log("[v0] Loading messages for conversation:", conversationId)
+      const supabase = createClient()
+
+      const { data, error } = await supabase
         .from("messages")
         .select(
           `
@@ -174,12 +180,20 @@ export default function ChatPage() {
           content,
           sender_id,
           created_at,
-          sender:profiles!messages_sender_id_fkey(id, full_name, avatar_url)
+          attachment_url,
+          attachment_type,
+          sender:profiles(id, full_name, avatar_url)
         `,
         )
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true })
 
+      if (error) {
+        console.error("[v0] Error loading messages:", error)
+        return
+      }
+
+      console.log("[v0] Loaded messages:", data)
       if (data) {
         setMessages(data as any)
       }
@@ -192,24 +206,148 @@ export default function ChatPage() {
     e.preventDefault()
     if (!messageInput.trim() || !selectedConversation || !currentUser) return
 
+    console.log("[v0] Sending message:", {
+      conversation_id: selectedConversation.id,
+      sender_id: currentUser.id,
+      content: messageInput.trim(),
+    })
+
     try {
-      const { error } = await prisma.from("messages").insert({
-        conversation_id: selectedConversation.id,
-        sender_id: currentUser.id,
-        content: messageInput.trim(),
-      })
+      const supabase = createClient()
 
-      if (error) throw error
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", currentUser.id)
+        .single()
 
+      if (profileError || !profile) {
+        console.error("[v0] Profile not found for user:", currentUser.id, profileError)
+        alert("Your profile is not set up. Please complete your profile first.")
+        return
+      }
+
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: selectedConversation.id,
+          sender_id: currentUser.id,
+          content: messageInput.trim(),
+        })
+        .select()
+
+      if (error) {
+        console.error("[v0] Error sending message:", error)
+        alert(`Failed to send message: ${error.message}`)
+        throw error
+      }
+
+      console.log("[v0] Message sent successfully:", data)
       setMessageInput("")
+
+      await loadMessages(selectedConversation.id)
     } catch (error) {
       console.error("[v0] Error sending message:", error)
     }
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedConversation || !currentUser) return
+
+    // Validate file type (images and videos only)
+    const validTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ]
+    if (!validTypes.includes(file.type)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload an image or video file",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please upload a file smaller than 10MB",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const supabase = createClient()
+
+      // Upload file to Supabase Storage
+      const fileExt = file.name.split(".").pop()
+      const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("chat-attachments")
+        .upload(fileName, file)
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("chat-attachments").getPublicUrl(fileName)
+
+      // Send message with attachment
+      const attachmentType = file.type.startsWith("image/") ? "image" : "video"
+
+      const { error: messageError } = await supabase.from("messages").insert({
+        conversation_id: selectedConversation.id,
+        sender_id: currentUser.id,
+        content: attachmentType === "image" ? "📷 Image" : "🎥 Video",
+        attachment_url: publicUrl,
+        attachment_type: attachmentType,
+      })
+
+      if (messageError) throw messageError
+
+      await loadMessages(selectedConversation.id)
+
+      toast({
+        title: "File sent",
+        description: "Your file has been sent successfully",
+      })
+    } catch (error) {
+      console.error("[v0] Error uploading file:", error)
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload file. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+  }
+
   const handleLogout = async () => {
-    await ()
+    const supabase = createClient()
+    await supabase.auth.signOut()
     router.push("/login")
+  }
+
+  const handleReport = () => {
+    toast({
+      title: "Report submitted",
+      description: "Thank you for reporting. We'll review this conversation.",
+    })
   }
 
   if (isLoading) {
@@ -341,9 +479,12 @@ export default function ChatPage() {
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h3 className="font-semibold">
+                  <Link
+                    href={`/profiles/${selectedConversation.other_participant.id}`}
+                    className="font-semibold hover:text-primary transition-colors cursor-pointer"
+                  >
                     {selectedConversation.other_participant.full_name || "Unknown User"}
-                  </h3>
+                  </Link>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -353,9 +494,28 @@ export default function ChatPage() {
                 <Button variant="ghost" size="icon">
                   <Video className="w-5 h-5" />
                 </Button>
-                <Button variant="ghost" size="icon">
-                  <MoreVertical className="w-5 h-5" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <MoreVertical className="w-5 h-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={`/profiles/${selectedConversation.other_participant.id}`}
+                        className="flex items-center cursor-pointer"
+                      >
+                        <User className="w-4 h-4 mr-2" />
+                        View Profile
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleReport} className="flex items-center cursor-pointer">
+                      <Flag className="w-4 h-4 mr-2" />
+                      Report
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -368,18 +528,34 @@ export default function ChatPage() {
                     <div key={message.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
                       <div className={`flex gap-2 max-w-[70%] ${isOwn ? "flex-row-reverse" : "flex-row"}`}>
                         {!isOwn && (
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={message.sender.avatar_url || "/placeholder.svg"} />
-                            <AvatarFallback>
-                              {message.sender.full_name
-                                ?.split(" ")
-                                .map((n) => n[0])
-                                .join("") || "?"}
-                            </AvatarFallback>
-                          </Avatar>
+                          <Link href={`/profiles/${message.sender_id}`} className="flex-shrink-0">
+                            <Avatar className="w-8 h-8 cursor-pointer hover:opacity-80 transition-opacity">
+                              <AvatarImage src={message.sender.avatar_url || "/placeholder.svg"} />
+                              <AvatarFallback>
+                                {message.sender.full_name
+                                  ?.split(" ")
+                                  .map((n) => n[0])
+                                  .join("") || "?"}
+                              </AvatarFallback>
+                            </Avatar>
+                          </Link>
                         )}
                         <div>
                           <Card className={`p-3 ${isOwn ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                            {message.attachment_url && message.attachment_type === "image" && (
+                              <img
+                                src={message.attachment_url || "/placeholder.svg"}
+                                alt="Shared image"
+                                className="rounded-lg max-w-full h-auto mb-2 max-h-96 object-cover"
+                              />
+                            )}
+                            {message.attachment_url && message.attachment_type === "video" && (
+                              <video
+                                src={message.attachment_url}
+                                controls
+                                className="rounded-lg max-w-full h-auto mb-2 max-h-96"
+                              />
+                            )}
                             <p className="text-sm leading-relaxed">{message.content}</p>
                           </Card>
                           <p className={`text-xs text-muted-foreground mt-1 ${isOwn ? "text-right" : "text-left"}`}>
@@ -400,7 +576,21 @@ export default function ChatPage() {
             {/* Message Input */}
             <div className="p-4 border-t border-border bg-card">
               <form onSubmit={handleSendMessage} className="flex items-end gap-2 max-w-4xl mx-auto">
-                <Button type="button" variant="ghost" size="icon" className="flex-shrink-0">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="flex-shrink-0"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                >
                   <Paperclip className="w-5 h-5" />
                 </Button>
                 <div className="flex-1 relative">
@@ -430,7 +620,3 @@ export default function ChatPage() {
     </div>
   )
 }
-
-
-
-

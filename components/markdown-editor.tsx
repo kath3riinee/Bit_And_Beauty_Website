@@ -28,7 +28,7 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
 
 **Bold text** and *italic text*
 
-```code block```"
+\`\`\`code block```"
           rows={15}
           className="font-mono text-sm"
         />
@@ -47,7 +47,3 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
     </Tabs>
   )
 }
-
-
-
-

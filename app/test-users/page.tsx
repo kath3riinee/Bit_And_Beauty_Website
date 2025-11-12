@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { SiteHeader } from "@/components/site-header"
@@ -14,12 +14,12 @@ export default function TestUsersPage() {
 
   const createTestUsers = async () => {
     setIsCreating(true)
-    
+    const supabase = createClient()
     const accounts = []
 
     try {
       // Create test user 1
-      const { data: user1, error: error1 } = await ({
+      const { data: user1, error: error1 } = await supabase.auth.signUp({
         email: "sarah.chen@fashiontech.test",
         password: "TestPassword123!",
         options: {
@@ -34,7 +34,7 @@ export default function TestUsersPage() {
         accounts.push({ email: "sarah.chen@fashiontech.test", password: "TestPassword123!", name: "Sarah Chen" })
 
         // Create profile
-        await prisma.from("profiles").insert({
+        await supabase.from("profiles").insert({
           id: user1.user.id,
           full_name: "Sarah Chen",
           bio: "3D Fashion Designer specializing in CLO3D",
@@ -44,7 +44,7 @@ export default function TestUsersPage() {
       }
 
       // Create test user 2
-      const { data: user2, error: error2 } = await ({
+      const { data: user2, error: error2 } = await supabase.auth.signUp({
         email: "maya.rodriguez@fashiontech.test",
         password: "TestPassword123!",
         options: {
@@ -63,7 +63,7 @@ export default function TestUsersPage() {
         })
 
         // Create profile
-        await prisma.from("profiles").insert({
+        await supabase.from("profiles").insert({
           id: user2.user.id,
           full_name: "Maya Rodriguez",
           bio: "Pattern Maker & AI Enthusiast",
@@ -73,16 +73,16 @@ export default function TestUsersPage() {
 
         // Create a conversation between the two users if both were created
         if (user1.user) {
-          const { data: conversation } = await prisma.from("conversations").insert({}).select().single()
+          const { data: conversation } = await supabase.from("conversations").insert({}).select().single()
 
           if (conversation) {
-            await prisma.from("conversation_participants").insert([
+            await supabase.from("conversation_participants").insert([
               { conversation_id: conversation.id, user_id: user1.user.id },
               { conversation_id: conversation.id, user_id: user2.user.id },
             ])
 
             // Add a test message
-            await prisma.from("messages").insert({
+            await supabase.from("messages").insert({
               conversation_id: conversation.id,
               sender_id: user1.user.id,
               content: "Hi Maya! I'd love to learn more about AI pattern making.",
@@ -183,7 +183,3 @@ export default function TestUsersPage() {
     </div>
   )
 }
-
-
-
-

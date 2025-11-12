@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -34,17 +34,17 @@ export default function CreateCoursePage() {
   }, [])
 
   const checkApprovalStatus = async () => {
-    
+    const supabase = createClient()
     const {
       data: { user },
-    } = await ()
+    } = await supabase.auth.getUser()
 
     if (!user) {
       router.push("/login")
       return
     }
 
-    const { data: profile } = await prisma.from("profiles").select("role").eq("id", user.id).single()
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
 
     // If user is instructor or admin, they're approved
     if (profile && (profile.role === "instructor" || profile.role === "admin")) {
@@ -54,7 +54,7 @@ export default function CreateCoursePage() {
     }
 
     // Otherwise check if user has an approved application
-    const { data, error } = await prisma
+    const { data, error } = await supabase
       .from("course_maker_applications")
       .select("status")
       .eq("user_id", user.id)
@@ -88,10 +88,10 @@ export default function CreateCoursePage() {
     setError(null)
 
     const formData = new FormData(e.currentTarget)
-    
+    const supabase = createClient()
     const {
       data: { user },
-    } = await ()
+    } = await supabase.auth.getUser()
 
     if (!user) {
       setError("Please log in to create a course")
@@ -101,15 +101,15 @@ export default function CreateCoursePage() {
 
     try {
       // Insert course
-      const { data: course, error: courseError } = await prisma
+      const { data: course, error: courseError } = await supabase
         .from("courses")
         .insert({
           title: formData.get("title") as string,
           description: formData.get("description") as string,
-          instructor_id: user.id,
-          level: formData.get("level") as string,
+          author_id: user.id,
+          difficulty: formData.get("level") as string,
           category: formData.get("category") as string,
-          published: false,
+          is_published: false,
         })
         .select()
         .single()
@@ -125,7 +125,7 @@ export default function CreateCoursePage() {
         order_index: index,
       }))
 
-      const { error: lessonsError } = await prisma.from("course_lessons").insert(lessonsToInsert)
+      const { error: lessonsError } = await supabase.from("course_lessons").insert(lessonsToInsert)
 
       if (lessonsError) throw lessonsError
 
@@ -311,7 +311,3 @@ export default function CreateCoursePage() {
     </div>
   )
 }
-
-
-
-

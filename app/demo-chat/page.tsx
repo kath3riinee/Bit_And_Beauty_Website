@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
@@ -12,11 +12,12 @@ export default function DemoChatPage() {
   const [isCreating, setIsCreating] = useState(false)
   const [message, setMessage] = useState("")
   const router = useRouter()
-  
 
   const createDemoUsers = async () => {
     setIsCreating(true)
     setMessage("Creating demo users...")
+
+    const supabase = createClient()
 
     try {
       // Create two demo users
@@ -29,7 +30,7 @@ export default function DemoChatPage() {
 
       for (const demo of demoUsers) {
         // Sign up user
-        const { data: authData, error: signUpError } = await ({
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
           email: demo.email,
           password: demo.password,
           options: {
@@ -54,17 +55,17 @@ export default function DemoChatPage() {
         setMessage("Creating conversation...")
 
         // Create conversation
-        const { data: convData, error: convError } = await prisma.from("conversations").insert({}).select().single()
+        const { data: convData, error: convError } = await supabase.from("conversations").insert({}).select().single()
 
         if (!convError && convData) {
           // Add participants
-          await prisma.from("conversation_participants").insert([
+          await supabase.from("conversation_participants").insert([
             { conversation_id: convData.id, user_id: createdUsers[0].id },
             { conversation_id: convData.id, user_id: createdUsers[1].id },
           ])
 
           // Add some demo messages
-          await prisma.from("messages").insert([
+          await supabase.from("messages").insert([
             {
               conversation_id: convData.id,
               sender_id: createdUsers[0].id,
@@ -156,7 +157,3 @@ export default function DemoChatPage() {
     </div>
   )
 }
-
-
-
-
