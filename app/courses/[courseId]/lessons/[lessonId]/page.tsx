@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -56,6 +56,7 @@ export default function LessonPage({
   const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set())
   const [isCompleting, setIsCompleting] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
+  const isNavigating = useRef(false)
 
   const course = courseData[params.courseId as keyof typeof courseData] || courseData["3d-design"]
   const currentLessonIndex = course.lessons.findIndex((l) => l.id === params.lessonId)
@@ -95,8 +96,9 @@ export default function LessonPage({
   }, [params.courseId])
 
   const handleCompleteLesson = async () => {
-    if (!currentUserId) return
+    if (!currentUserId || isNavigating.current) return
 
+    isNavigating.current = true
     setIsCompleting(true)
     const supabase = createClient()
 
@@ -147,13 +149,14 @@ export default function LessonPage({
         toast.success("Lesson completed!")
 
         // Navigate to next lesson if available
-        if (nextLesson) {
+        if (nextLesson && !isNavigating.current) {
           router.push(`/courses/${params.courseId}/lessons/${nextLesson.id}`)
         }
       }
     } catch (error) {
       console.error("[v0] Error completing lesson:", error)
       toast.error("Failed to complete lesson")
+      isNavigating.current = false
     } finally {
       setIsCompleting(false)
     }

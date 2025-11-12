@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 
 // Mock course data - in a real app, this would come from a database
@@ -39,11 +39,14 @@ const courseData = {
 
 export default function CoursePage({ params }: { params: { courseId: string } }) {
   const router = useRouter()
+  const hasRedirected = useRef(false)
 
   useEffect(() => {
-    // Redirect to the first lesson
-    router.push(`/courses/${params.courseId}/lessons/intro`)
-  }, [params.courseId, router])
+    if (!hasRedirected.current) {
+      hasRedirected.current = true
+      router.replace(`/courses/${params.courseId}/lessons/intro`)
+    }
+  }, [params.courseId])
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
