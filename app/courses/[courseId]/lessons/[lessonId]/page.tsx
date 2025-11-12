@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -56,7 +56,6 @@ export default function LessonPage({
   const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set())
   const [isCompleting, setIsCompleting] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
-  const isNavigating = useRef(false)
 
   const course = courseData[params.courseId as keyof typeof courseData] || courseData["3d-design"]
   const currentLessonIndex = course.lessons.findIndex((l) => l.id === params.lessonId)
@@ -70,39 +69,72 @@ export default function LessonPage({
   const isLocked = currentLessonIndex > 0 && !completedLessons.has(prevLesson?.id)
 
   useEffect(() => {
+    let mounted = true
+
     const checkAuth = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setIsAuthenticated(!!user)
-      setCurrentUserId(user?.id || null)
+      try {
+        const supabase = createClient()
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser()
 
-      if (user) {
-        // Load lesson progress
-        const { data: progress } = await supabase
-          .from("lesson_progress")
-          .select("lesson_id")
-          .eq("user_id", user.id)
-          .eq("course_id", params.courseId)
-          .eq("completed", true)
+        if (!mounted) return
 
-        if (progress) {
-          setCompletedLessons(new Set(progress.map((p) => p.lesson_id)))
+        console.log("[v0] Auth check - User:", user?.email || "Not logged in", "Error:", error?.message || "None")
+
+        setIsAuthenticated(!!user)
+        setCurrentUserId(user?.id || null)
+
+        if (user) {
+          // Load lesson progress
+          const { data: progress, error: progressError } = await supabase
+            .from("lesson_progress")
+            .select("lesson_id")
+            .eq("user_id", user.id)
+            .eq("course_id", params.courseId)
+            .eq("completed", true)
+
+          console.log("[v0] Progress loaded:", progress?.length || 0, "lessons completed")
+
+          if (progress && mounted) {
+            setCompletedLessons(new Set(progress.map((p) => p.lesson_id)))
+          }
+        }
+      } catch (error) {
+        console.error("[v0] Auth check error:", error)
+        if (mounted) {
+          setIsAuthenticated(false)
         }
       }
     }
+
     checkAuth()
+
+    return () => {
+      mounted = false
+    }
   }, [params.courseId])
 
-  const handleCompleteLesson = async () => {
-    if (!currentUserId || isNavigating.current) return
+  useEffect(() => {
+    if (isAuthenticated === false) {
+      console.log("[v0] Not authenticated - redirecting to login")
+      router.push("/login")
+    }
+  }, [isAuthenticated, router])
 
-    isNavigating.current = true
+  const handleCompleteLesson = async () => {
+    if (!currentUserId || isCompleting) {
+      console.log("[v0] Cannot complete - userId:", currentUserId, "isCompleting:", isCompleting)
+      return
+    }
+
     setIsCompleting(true)
     const supabase = createClient()
 
     try {
+      console.log("[v0] Marking lesson complete:", params.lessonId)
+
       // Mark lesson as complete
       const { error } = await supabase.from("lesson_progress").upsert(
         {
@@ -124,6 +156,8 @@ export default function LessonPage({
       setCompletedLessons((prev) => new Set([...prev, params.lessonId]))
 
       if (isLastLesson) {
+        console.log("[v0] Last lesson completed - showing celebration")
+
         // Increment courses_count in profiles table
         const { error: profileError } = await supabase.rpc("increment_courses_count", {
           user_id: currentUserId,
@@ -131,7 +165,6 @@ export default function LessonPage({
 
         if (profileError) {
           console.error("[v0] Error incrementing courses_count:", profileError)
-          // Continue anyway - don't fail the whole operation
         }
 
         // Create course completion notification
@@ -149,14 +182,14 @@ export default function LessonPage({
         toast.success("Lesson completed!")
 
         // Navigate to next lesson if available
-        if (nextLesson && !isNavigating.current) {
-          router.push(`/courses/${params.courseId}/lessons/${nextLesson.id}`)
+        if (nextLesson) {
+          console.log("[v0] Navigating to next lesson:", nextLesson.id)
+          router.replace(`/courses/${params.courseId}/lessons/${nextLesson.id}`)
         }
       }
     } catch (error) {
       console.error("[v0] Error completing lesson:", error)
       toast.error("Failed to complete lesson")
-      isNavigating.current = false
     } finally {
       setIsCompleting(false)
     }
@@ -174,8 +207,14 @@ export default function LessonPage({
   }
 
   if (!isAuthenticated) {
-    router.push(`/courses/${params.courseId}`)
-    return null
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting to login...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!currentLesson) {
