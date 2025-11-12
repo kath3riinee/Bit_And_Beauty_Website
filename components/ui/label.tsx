@@ -22,7 +22,3 @@ function Label({
 }
 
 export { Label }
-
-
-
-

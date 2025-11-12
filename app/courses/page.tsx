@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Code, Palette, Sparkles, Users, Award, ArrowRight } from "lucide-react"
+import { SiteHeader } from "@/components/site-header"
 
 export default function CoursesPage() {
   const courses = [
@@ -63,36 +64,7 @@ export default function CoursesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">FashionTech Academy</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/courses" className="text-sm font-medium text-primary">
-              Courses
-            </Link>
-            <Link href="/profiles" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-              Community
-            </Link>
-            <Link href="/settings" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-              Settings
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm">
-              Log in
-            </Button>
-            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
-              Get Started
-            </Button>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* Page Header */}
       <section className="bg-muted py-12">
@@ -144,7 +116,3 @@ export default function CoursesPage() {
     </div>
   )
 }
-
-
-
-

@@ -5,7 +5,7 @@ import type React from "react"
 import Link from "next/link"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -26,12 +26,11 @@ export default function ApplyInstructorPage() {
     setError(null)
 
     const formData = new FormData(e.currentTarget)
-    
+    const supabase = createClient()
 
-    // Check if user is logged in
     const {
       data: { user },
-    } = await ()
+    } = await supabase.auth.getUser()
 
     if (!user) {
       setError("Please log in to apply")
@@ -41,15 +40,13 @@ export default function ApplyInstructorPage() {
     }
 
     try {
-      const { error: insertError } = await prisma.from("course_maker_applications").insert({
+      const { error: insertError } = await supabase.from("course_maker_applications").insert({
         user_id: user.id,
         full_name: formData.get("fullName") as string,
         email: formData.get("email") as string,
         expertise: formData.get("expertise") as string,
         experience: formData.get("experience") as string,
-        course_idea: formData.get("courseIdea") as string,
-        portfolio_url: formData.get("portfolio") as string,
-        status: "pending",
+        sample_content: formData.get("courseIdea") as string,
       })
 
       if (insertError) throw insertError
@@ -190,7 +187,3 @@ export default function ApplyInstructorPage() {
     </div>
   )
 }
-
-
-
-

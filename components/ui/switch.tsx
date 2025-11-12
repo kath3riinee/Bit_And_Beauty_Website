@@ -29,7 +29,3 @@ function Switch({
 }
 
 export { Switch }
-
-
-
-

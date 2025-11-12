@@ -15,8 +15,14 @@ import {
   TestTube,
 } from "lucide-react"
 import { SiteHeader } from "@/components/site-header"
+import { createClient } from "@/lib/supabase/server"
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   return (
     <div className="min-h-screen">
       <SiteHeader />
@@ -74,53 +80,57 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="container mx-auto px-4 py-12">
-        <Card className="max-w-4xl mx-auto border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-secondary/5">
-          <CardHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                <TestTube className="w-6 h-6 text-primary" />
+      {!user && (
+        <section className="container mx-auto px-4 py-12">
+          <Card className="max-w-4xl mx-auto border-2 border-primary/30 bg-gradient-to-br from-primary/5 to-secondary/5">
+            <CardHeader>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <TestTube className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl">Try the Platform</CardTitle>
+                  <CardDescription>Test messaging and features with demo accounts</CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle className="text-2xl">Try the Platform</CardTitle>
-                <CardDescription>Test messaging and features with demo accounts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="p-4 bg-card rounded-lg border">
+                  <h3 className="font-semibold mb-2 flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                    Demo Accounts
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Get pre-configured demo credentials to test all features
+                  </p>
+                  <Button asChild className="w-full">
+                    <Link href="/demo">
+                      Get Demo Access
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Link>
+                  </Button>
+                </div>
+                <div className="p-4 bg-card rounded-lg border">
+                  <h3 className="font-semibold mb-2 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-primary" />
+                    Quick Login
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Already have demo accounts? Login to test features
+                  </p>
+                  <Button variant="outline" asChild className="w-full bg-transparent">
+                    <Link href="/login">
+                      Go to Login
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Link>
+                  </Button>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-4 bg-card rounded-lg border">
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-primary" />
-                  Demo Accounts
-                </h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Get pre-configured demo credentials to test all features
-                </p>
-                <Button asChild className="w-full">
-                  <Link href="/demo">
-                    Get Demo Access
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Link>
-                </Button>
-              </div>
-              <div className="p-4 bg-card rounded-lg border">
-                <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-primary" />
-                  Quick Login
-                </h3>
-                <p className="text-sm text-muted-foreground mb-4">Already have demo accounts? Login to test features</p>
-                <Button variant="outline" asChild className="w-full bg-transparent">
-                  <Link href="/login">
-                    Go to Login
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
         <div className="container mx-auto px-4">
@@ -309,30 +319,64 @@ export default function HomePage() {
       <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground py-20 md:py-28">
         <div className="absolute inset-0 bg-grid-pattern opacity-10" />
         <div className="container relative mx-auto px-4 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6 text-balance">Ready to Transform Your Fashion Career?</h2>
-          <p className="text-lg md:text-xl text-primary-foreground/90 mb-10 max-w-2xl mx-auto text-pretty leading-relaxed">
-            Join hundreds of women in fashion who are already using technology to bring their creative visions to life
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button
-              size="lg"
-              variant="secondary"
-              className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all"
-              asChild
-            >
-              <Link href="/signup">
-                Create Free Account <ArrowRight className="w-5 h-5 ml-2" />
-              </Link>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full sm:w-auto bg-transparent border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground/10"
-              asChild
-            >
-              <Link href="/profiles">Explore Community</Link>
-            </Button>
-          </div>
+          {user ? (
+            <>
+              <h2 className="text-4xl md:text-5xl font-bold mb-6 text-balance">Continue Your Learning Journey</h2>
+              <p className="text-lg md:text-xl text-primary-foreground/90 mb-10 max-w-2xl mx-auto text-pretty leading-relaxed">
+                Explore new courses, connect with the community, and take your fashion tech skills to the next level
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all"
+                  asChild
+                >
+                  <Link href="/courses">
+                    Browse Courses <ArrowRight className="w-5 h-5 ml-2" />
+                  </Link>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full sm:w-auto bg-transparent border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground/10"
+                  asChild
+                >
+                  <Link href="/profiles">Explore Community</Link>
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-4xl md:text-5xl font-bold mb-6 text-balance">
+                Ready to Transform Your Fashion Career?
+              </h2>
+              <p className="text-lg md:text-xl text-primary-foreground/90 mb-10 max-w-2xl mx-auto text-pretty leading-relaxed">
+                Join hundreds of women in fashion who are already using technology to bring their creative visions to
+                life
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all"
+                  asChild
+                >
+                  <Link href="/signup">
+                    Create Free Account <ArrowRight className="w-5 h-5 ml-2" />
+                  </Link>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full sm:w-auto bg-transparent border-2 border-primary-foreground text-primary-foreground hover:bg-primary-foreground/10"
+                  asChild
+                >
+                  <Link href="/profiles">Explore Community</Link>
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </section>
 
@@ -425,7 +469,3 @@ export default function HomePage() {
     </div>
   )
 }
-
-
-
-

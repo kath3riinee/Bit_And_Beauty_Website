@@ -1,16 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
-  Sparkles,
   MapPin,
   Briefcase,
   Award,
@@ -19,62 +19,268 @@ import {
   UserPlus,
   Mail,
   Calendar,
-  BookOpen,
-  Star,
+  Check,
+  X,
+  Clock,
+  Settings,
 } from "lucide-react"
-
-// Mock profile data - in a real app, this would come from a database
-const profilesData: Record<string, any> = {
-  "1": {
-    id: 1,
-    name: "Sarah Chen",
-    title: "3D Fashion Designer",
-    location: "New York, NY",
-    avatar: "/woman-fashion-designer.png",
-    bio: "Specializing in CLO3D and virtual fashion design. Passionate about sustainable digital prototyping and helping others learn the power of 3D design in fashion.",
-    skills: ["CLO3D", "Blender", "3D Design", "Virtual Fashion", "Sustainable Design", "Digital Prototyping"],
-    courses: 3,
-    connections: 124,
-    joined: "January 2024",
-    completedCourses: [
-      { title: "3D Design Fundamentals", progress: 100 },
-      { title: "Digital Textile Design", progress: 100 },
-      { title: "Sustainable Tech Solutions", progress: 75 },
-    ],
-    achievements: [
-      { title: "Early Adopter", description: "Joined in the first month", icon: Star },
-      { title: "Course Completer", description: "Completed 2 courses", icon: Award },
-      { title: "Community Builder", description: "100+ connections", icon: Users },
-    ],
-  },
-  "2": {
-    id: 2,
-    name: "Maya Rodriguez",
-    title: "Pattern Maker & AI Enthusiast",
-    location: "Los Angeles, CA",
-    avatar: "/latina-fashion-professional.jpg",
-    bio: "Using AI to revolutionize pattern making. 10+ years in fashion tech innovation.",
-    skills: ["AI Tools", "Pattern Making", "CAD", "Innovation", "Machine Learning", "Fashion Tech"],
-    courses: 5,
-    connections: 89,
-    joined: "December 2023",
-    completedCourses: [
-      { title: "AI for Pattern Making", progress: 100 },
-      { title: "3D Design Fundamentals", progress: 100 },
-      { title: "E-commerce Essentials", progress: 60 },
-    ],
-    achievements: [
-      { title: "AI Pioneer", description: "Completed AI course", icon: Sparkles },
-      { title: "Course Completer", description: "Completed 2 courses", icon: Award },
-    ],
-  },
-}
+import { SiteHeader } from "@/components/site-header"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ProfilePage({ params }: { params: { userId: string } }) {
-  const profile = profilesData[params.userId] || profilesData["1"]
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [isCreatingConversation, setIsCreatingConversation] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [connectionStatus, setConnectionStatus] = useState<"none" | "pending_sent" | "pending_received" | "connected">(
+    "none",
+  )
+  const [connectionId, setConnectionId] = useState<string | null>(null)
+  const [isProcessingConnection, setIsProcessingConnection] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    async function init() {
+      await checkCurrentUser()
+      await fetchProfile()
+    }
+    init()
+  }, [params.userId])
+
+  useEffect(() => {
+    if (currentUser && profile && currentUser.id !== params.userId) {
+      checkConnectionStatus()
+
+      const channel = supabase
+        .channel("connection_changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "connections",
+            filter: `or(and(requester_id.eq.${currentUser.id},recipient_id.eq.${params.userId}),and(requester_id.eq.${params.userId},recipient_id.eq.${currentUser.id}))`,
+          },
+          () => {
+            checkConnectionStatus()
+          },
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [currentUser, profile])
+
+  const checkCurrentUser = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    setCurrentUser(user)
+  }
+
+  const checkConnectionStatus = async () => {
+    if (!currentUser) return
+
+    try {
+      // Check if there's a connection between current user and profile user
+      const { data, error } = await supabase
+        .from("connections")
+        .select("*")
+        .or(
+          `and(requester_id.eq.${currentUser.id},recipient_id.eq.${params.userId}),and(requester_id.eq.${params.userId},recipient_id.eq.${currentUser.id})`,
+        )
+        .single()
+
+      if (error && error.code !== "PGRST116") {
+        // PGRST116 is "no rows returned"
+        console.error("[v0] Error checking connection:", error)
+        return
+      }
+
+      if (data) {
+        setConnectionId(data.id)
+        if (data.status === "accepted") {
+          setConnectionStatus("connected")
+        } else if (data.status === "pending") {
+          // Check if current user sent or received the request
+          if (data.requester_id === currentUser.id) {
+            setConnectionStatus("pending_sent")
+          } else {
+            setConnectionStatus("pending_received")
+          }
+        }
+      } else {
+        setConnectionStatus("none")
+      }
+    } catch (error) {
+      console.error("[v0] Error checking connection status:", error)
+    }
+  }
+
+  const handleSendConnectionRequest = async () => {
+    if (!currentUser) {
+      router.push("/login")
+      return
+    }
+
+    setIsProcessingConnection(true)
+    try {
+      const { data: senderProfile } = await supabase
+        .from("profiles")
+        .select("display_name, full_name")
+        .eq("id", currentUser.id)
+        .single()
+
+      // Create connection request
+      const { data: connection, error: connectionError } = await supabase
+        .from("connections")
+        .insert({
+          requester_id: currentUser.id,
+          recipient_id: params.userId,
+          status: "pending",
+        })
+        .select()
+        .single()
+
+      if (connectionError) throw connectionError
+
+      const senderName = senderProfile?.display_name || senderProfile?.full_name || "Someone"
+
+      // Create notification for recipient
+      await supabase.from("notifications").insert({
+        user_id: params.userId,
+        title: "New Connection Request",
+        message: `${senderName} wants to connect with you`,
+        type: "friend_request",
+        link: `/profiles/${currentUser.id}`,
+        is_read: false,
+      })
+
+      toast({
+        title: "Connection request sent",
+        description: "Your request has been sent successfully",
+      })
+
+      checkConnectionStatus()
+    } catch (error) {
+      console.error("[v0] Error sending connection request:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send connection request",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessingConnection(false)
+    }
+  }
+
+  const handleAcceptConnection = async () => {
+    if (!connectionId) return
+
+    setIsProcessingConnection(true)
+    try {
+      const { error } = await supabase.from("connections").update({ status: "accepted" }).eq("id", connectionId)
+
+      if (error) throw error
+
+      // Create notification for requester
+      await supabase.from("notifications").insert({
+        user_id: profile.id,
+        title: "Connection Accepted",
+        message: `${currentUser.user_metadata?.full_name || "Someone"} accepted your connection request`,
+        type: "friend_request_accepted",
+        link: `/profiles/${currentUser.id}`,
+        is_read: false,
+      })
+
+      toast({
+        title: "Connection accepted",
+        description: "You are now connected",
+      })
+
+      checkConnectionStatus()
+    } catch (error) {
+      console.error("[v0] Error accepting connection:", error)
+      toast({
+        title: "Error",
+        description: "Failed to accept connection",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessingConnection(false)
+    }
+  }
+
+  const handleRejectConnection = async () => {
+    if (!connectionId) return
+
+    setIsProcessingConnection(true)
+    try {
+      const { error } = await supabase.from("connections").delete().eq("id", connectionId)
+
+      if (error) throw error
+
+      toast({
+        title: "Connection rejected",
+        description: "The connection request has been rejected",
+      })
+
+      checkConnectionStatus()
+    } catch (error) {
+      console.error("[v0] Error rejecting connection:", error)
+      toast({
+        title: "Error",
+        description: "Failed to reject connection",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessingConnection(false)
+    }
+  }
+
+  const handleRemoveFriend = async () => {
+    if (!connectionId) return
+
+    setIsProcessingConnection(true)
+    try {
+      const { error } = await supabase.from("connections").delete().eq("id", connectionId)
+
+      if (error) throw error
+
+      toast({
+        title: "Connection removed",
+        description: "You are no longer connected with this user",
+      })
+
+      checkConnectionStatus()
+    } catch (error) {
+      console.error("[v0] Error removing connection:", error)
+      toast({
+        title: "Error",
+        description: "Failed to remove connection",
+        variant: "destructive",
+      })
+    } finally {
+      setIsProcessingConnection(false)
+    }
+  }
+
+  async function fetchProfile() {
+    try {
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", params.userId).single()
+
+      if (error) throw error
+      setProfile(data)
+    } catch (error) {
+      console.error("[v0] Error fetching profile:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSendMessage = async () => {
     setIsCreatingConversation(true)
@@ -89,25 +295,28 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
         return
       }
 
-      // Check if conversation already exists
-      const { data: existingParticipants } = await supabase
+      // Find all conversations where the current user is a participant
+      const { data: userConversations } = await supabase
         .from("conversation_participants")
         .select("conversation_id")
         .eq("user_id", user.id)
 
-      if (existingParticipants) {
-        for (const participant of existingParticipants) {
-          const { data: otherParticipant } = await supabase
-            .from("conversation_participants")
-            .select("user_id")
-            .eq("conversation_id", participant.conversation_id)
-            .eq("user_id", params.userId)
-            .single()
+      if (userConversations && userConversations.length > 0) {
+        // Check if any of these conversations also include the target user
+        const conversationIds = userConversations.map((p) => p.conversation_id)
 
-          if (otherParticipant) {
-            router.push("/chat")
-            return
-          }
+        const { data: sharedConversation } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id")
+          .eq("user_id", params.userId)
+          .in("conversation_id", conversationIds)
+          .limit(1)
+          .single()
+
+        if (sharedConversation) {
+          // Conversation already exists, redirect to chat
+          router.push("/chat")
+          return
         }
       }
 
@@ -122,7 +331,14 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
         { conversation_id: conversation.id, user_id: params.userId },
       ])
 
-      if (participantsError) throw participantsError
+      if (participantsError) {
+        if (participantsError.message.includes("duplicate key")) {
+          // Conversation was created by another request, just redirect
+          router.push("/chat")
+          return
+        }
+        throw participantsError
+      }
 
       router.push("/chat")
     } catch (error) {
@@ -132,38 +348,136 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
     }
   }
 
+  const renderConnectionButton = () => {
+    if (!currentUser || currentUser.id === params.userId) {
+      return null // Don't show connect button on own profile
+    }
+
+    if (connectionStatus === "connected") {
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="bg-transparent">
+              <Check className="w-4 h-4 mr-2" />
+              Connected
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={handleRemoveFriend}
+              disabled={isProcessingConnection}
+              className="text-destructive cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              Remove Friend
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )
+    }
+
+    if (connectionStatus === "pending_sent") {
+      return (
+        <Button variant="outline" className="bg-transparent" disabled>
+          <Clock className="w-4 h-4 mr-2" />
+          Request Sent
+        </Button>
+      )
+    }
+
+    if (connectionStatus === "pending_received") {
+      return (
+        <div className="flex gap-2">
+          <Button
+            onClick={handleAcceptConnection}
+            disabled={isProcessingConnection}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Check className="w-4 h-4 mr-2" />
+            Accept
+          </Button>
+          <Button variant="outline" onClick={handleRejectConnection} disabled={isProcessingConnection}>
+            <X className="w-4 h-4 mr-2" />
+            Reject
+          </Button>
+        </div>
+      )
+    }
+
+    return (
+      <Button
+        variant="outline"
+        className="bg-transparent"
+        onClick={handleSendConnectionRequest}
+        disabled={isProcessingConnection}
+      >
+        <UserPlus className="w-4 h-4 mr-2" />
+        Connect
+      </Button>
+    )
+  }
+
+  const renderMessageButton = () => {
+    if (!currentUser) {
+      return (
+        <Button
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => router.push("/login")}
+        >
+          <MessageCircle className="w-4 h-4 mr-2" />
+          Send Message
+        </Button>
+      )
+    }
+
+    if (currentUser.id === params.userId) {
+      return (
+        <Button
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+          onClick={() => router.push("/settings")}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Edit Profile
+        </Button>
+      )
+    }
+
+    return (
+      <Button
+        className="bg-primary text-primary-foreground hover:bg-primary/90"
+        onClick={handleSendMessage}
+        disabled={isCreatingConversation}
+      >
+        <MessageCircle className="w-4 h-4 mr-2" />
+        {isCreatingConversation ? "Starting chat..." : "Send Message"}
+      </Button>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading profile...</p>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-12 text-center">
+          <p className="text-muted-foreground mb-4">Profile not found</p>
+          <Button asChild>
+            <Link href="/profiles">Back to Community</Link>
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold text-foreground">FashionTech Academy</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/courses" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-              Courses
-            </Link>
-            <Link href="/profiles" className="text-sm font-medium text-primary">
-              Community
-            </Link>
-            <Link href="/settings" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
-              Settings
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/login">Log in</Link>
-            </Button>
-            <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" asChild>
-              <Link href="/signup">Get Started</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* Profile Header */}
       <section className="bg-muted border-b border-border">
@@ -178,9 +492,12 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
 
             <div className="flex flex-col md:flex-row gap-6 items-start mt-4">
               <Avatar className="w-32 h-32 border-4 border-background shadow-lg">
-                <AvatarImage src={profile.avatar || "/placeholder.svg"} alt={profile.name} />
+                <AvatarImage
+                  src={profile.avatar_url || "/placeholder.svg"}
+                  alt={profile.display_name || profile.full_name}
+                />
                 <AvatarFallback className="text-2xl">
-                  {profile.name
+                  {(profile.display_name || profile.full_name || "U")
                     .split(" ")
                     .map((n: string) => n[0])
                     .join("")}
@@ -188,35 +505,31 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
               </Avatar>
 
               <div className="flex-1">
-                <h1 className="text-3xl font-bold mb-2">{profile.name}</h1>
-                <div className="flex items-center gap-2 text-muted-foreground mb-3">
-                  <Briefcase className="w-4 h-4" />
-                  <span>{profile.title}</span>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground mb-4">
-                  <MapPin className="w-4 h-4" />
-                  <span>{profile.location}</span>
-                </div>
+                <h1 className="text-3xl font-bold mb-2">{profile.display_name || profile.full_name || "User"}</h1>
+                {profile.title && (
+                  <div className="flex items-center gap-2 text-muted-foreground mb-3">
+                    <Briefcase className="w-4 h-4" />
+                    <span>{profile.title}</span>
+                  </div>
+                )}
+                {profile.location && (
+                  <div className="flex items-center gap-2 text-muted-foreground mb-4">
+                    <MapPin className="w-4 h-4" />
+                    <span>{profile.location}</span>
+                  </div>
+                )}
 
-                <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">{profile.bio}</p>
+                {profile.bio && <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">{profile.bio}</p>}
 
                 <div className="flex flex-wrap gap-3">
-                  <Button
-                    className="bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={handleSendMessage}
-                    disabled={isCreatingConversation}
-                  >
-                    <MessageCircle className="w-4 h-4 mr-2" />
-                    {isCreatingConversation ? "Starting chat..." : "Send Message"}
-                  </Button>
-                  <Button variant="outline" className="bg-transparent">
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Connect
-                  </Button>
-                  <Button variant="outline" className="bg-transparent">
-                    <Mail className="w-4 h-4 mr-2" />
-                    Email
-                  </Button>
+                  {renderMessageButton()}
+                  {renderConnectionButton()}
+                  {profile.email && currentUser?.id !== params.userId && (
+                    <Button variant="outline" className="bg-transparent">
+                      <Mail className="w-4 h-4 mr-2" />
+                      Email
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -226,14 +539,14 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
                     <div className="flex items-center gap-3 mb-3">
                       <Award className="w-5 h-5 text-primary" />
                       <div>
-                        <div className="text-2xl font-bold">{profile.courses}</div>
+                        <div className="text-2xl font-bold">{profile.courses_count || 0}</div>
                         <div className="text-xs text-muted-foreground">Courses</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <Users className="w-5 h-5 text-primary" />
                       <div>
-                        <div className="text-2xl font-bold">{profile.connections}</div>
+                        <div className="text-2xl font-bold">{profile.connections_count || 0}</div>
                         <div className="text-xs text-muted-foreground">Connections</div>
                       </div>
                     </div>
@@ -251,25 +564,25 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
           <Tabs defaultValue="about" className="space-y-6">
             <TabsList className="bg-muted">
               <TabsTrigger value="about">About</TabsTrigger>
-              <TabsTrigger value="courses">Courses</TabsTrigger>
-              <TabsTrigger value="achievements">Achievements</TabsTrigger>
             </TabsList>
 
             <TabsContent value="about" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Skills & Expertise</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {profile.skills.map((skill: string) => (
-                      <Badge key={skill} variant="secondary" className="text-sm px-3 py-1">
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              {profile.skills && profile.skills.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Skills & Expertise</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {profile.skills.map((skill: string) => (
+                        <Badge key={skill} variant="secondary" className="text-sm px-3 py-1">
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader>
@@ -278,61 +591,12 @@ export default function ProfilePage({ params }: { params: { userId: string } }) 
                 <CardContent>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Calendar className="w-4 h-4" />
-                    <span>{profile.joined}</span>
+                    <span>
+                      {new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            <TabsContent value="courses" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Learning Journey</CardTitle>
-                  <CardDescription>Courses in progress and completed</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {profile.completedCourses.map((course: any) => (
-                    <div key={course.title} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <BookOpen className="w-4 h-4 text-primary" />
-                          <span className="font-medium">{course.title}</span>
-                        </div>
-                        <span className="text-sm text-muted-foreground">{course.progress}%</span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div
-                          className="bg-primary rounded-full h-2 transition-all"
-                          style={{ width: `${course.progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="achievements" className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-4">
-                {profile.achievements.map((achievement: any) => {
-                  const Icon = achievement.icon
-                  return (
-                    <Card key={achievement.title}>
-                      <CardHeader>
-                        <div className="flex items-start gap-3">
-                          <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Icon className="w-6 h-6 text-primary" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-lg">{achievement.title}</CardTitle>
-                            <CardDescription>{achievement.description}</CardDescription>
-                          </div>
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  )
-                })}
-              </div>
             </TabsContent>
           </Tabs>
         </div>

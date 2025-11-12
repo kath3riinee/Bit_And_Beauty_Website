@@ -1,6 +1,8 @@
+"use client"
+
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Lightbulb, Code2, Play } from "lucide-react"
+import { Lightbulb, Code2, Play, CheckCircle2, ChevronRight, Trophy } from "lucide-react"
 
 interface Lesson {
   id: string
@@ -11,10 +13,22 @@ interface Lesson {
 interface CourseContentProps {
   lesson: Lesson
   courseId: string
+  onComplete?: () => void
+  isCompleted?: boolean
+  isCompleting?: boolean
+  hasNextLesson?: boolean
+  isLastLesson?: boolean
 }
 
-export function CourseContent({ lesson, courseId }: CourseContentProps) {
-  // Mock content - in a real app, this would be fetched based on courseId and lesson.id
+export function CourseContent({
+  lesson,
+  courseId,
+  onComplete,
+  isCompleted = false,
+  isCompleting = false,
+  hasNextLesson = true,
+  isLastLesson = false,
+}: CourseContentProps) {
   return (
     <div className="max-w-4xl space-y-8">
       <div>
@@ -123,6 +137,49 @@ export function CourseContent({ lesson, courseId }: CourseContentProps) {
           </div>
         </Card>
 
+        {onComplete && (
+          <div className="pt-4">
+            {isCompleted ? (
+              <Card className="bg-primary/10 border-primary/20">
+                <div className="p-6 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-6 h-6 text-primary" />
+                    <div>
+                      <h4 className="font-semibold">Lesson Completed</h4>
+                      <p className="text-sm text-muted-foreground">Great job! You've finished this lesson.</p>
+                    </div>
+                  </div>
+                  {hasNextLesson && (
+                    <Button onClick={onComplete} disabled={isCompleting}>
+                      Next Lesson
+                      <ChevronRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <Button onClick={onComplete} disabled={isCompleting} size="lg" className="w-full">
+                {isCompleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Completing...
+                  </>
+                ) : isLastLesson ? (
+                  <>
+                    <Trophy className="w-5 h-5 mr-2" />
+                    Complete and Finish Course
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 mr-2" />
+                    Complete & Continue
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Additional Resources */}
         <section>
           <h3 className="text-xl font-semibold mb-3">Additional Resources</h3>
@@ -148,7 +205,3 @@ export function CourseContent({ lesson, courseId }: CourseContentProps) {
     </div>
   )
 }
-
-
-
-

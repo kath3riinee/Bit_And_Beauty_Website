@@ -4,7 +4,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Sparkles, Menu, X, LogOut, MessageSquare } from "lucide-react"
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 export function SiteHeader() {
@@ -13,19 +13,19 @@ export function SiteHeader() {
   const [profile, setProfile] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
-  
 
   useEffect(() => {
-    // Check current user
     const checkUser = async () => {
+      const supabase = createClient()
+
       const {
         data: { user },
-      } = await ()
+      } = await supabase.auth.getUser()
       setUser(user)
 
       if (user) {
-        // Get user profile to check role
-        const { data: profileData } = await prisma.from("profiles").select("*").eq("id", user.id).single()
+        // Fetch user profile from profiles table
+        const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single()
 
         setProfile(profileData)
       }
@@ -35,10 +35,10 @@ export function SiteHeader() {
 
     checkUser()
 
-    // Listen for auth changes
+    const supabase = createClient()
     const {
       data: { subscription },
-    } = ((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
         checkUser()
@@ -51,7 +51,8 @@ export function SiteHeader() {
   }, [])
 
   const handleLogout = async () => {
-    await ()
+    const supabase = createClient()
+    await supabase.auth.signOut()
     setUser(null)
     setProfile(null)
     router.push("/")
@@ -243,7 +244,3 @@ export function SiteHeader() {
     </header>
   )
 }
-
-
-
-
