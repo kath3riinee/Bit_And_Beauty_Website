@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,8 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SiteHeader } from "@/components/site-header"
-import { MarkdownEditor } from "@/components/markdown-editor"
-import { Plus, Trash2, Save, Eye } from "lucide-react"
+import { Send, AlertCircle } from 'lucide-react'
+import { useToast } from "@/hooks/use-toast"
 
 interface Lesson {
   id: string
@@ -28,6 +28,7 @@ export default function CreateCoursePage() {
   const [lessons, setLessons] = useState<Lesson[]>([{ id: "1", title: "", duration: "", content: "" }])
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     checkApprovalStatus()
@@ -44,10 +45,9 @@ export default function CreateCoursePage() {
       return
     }
 
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const { data: profile } = await supabase.from("profiles").select("role, is_course_maker").eq("id", user.id).single()
 
-    // If user is instructor or admin, they're approved
-    if (profile && (profile.role === "instructor" || profile.role === "admin")) {
+    if (profile && (profile.role === "admin" || profile.role === "administrator" || profile.is_course_maker === true)) {
       setIsApproved(true)
       setCheckingAuth(false)
       return
@@ -100,38 +100,31 @@ export default function CreateCoursePage() {
     }
 
     try {
-      // Insert course
-      const { data: course, error: courseError } = await supabase
-        .from("courses")
+      const { error: requestError } = await supabase
+        .from("course_creation_requests")
         .insert({
-          title: formData.get("title") as string,
-          description: formData.get("description") as string,
-          author_id: user.id,
-          difficulty: formData.get("level") as string,
-          category: formData.get("category") as string,
-          is_published: false,
+          requester_id: user.id,
+          course_title: formData.get("title") as string,
+          course_description: formData.get("description") as string,
+          course_category: formData.get("category") as string,
+          status: "pending",
         })
-        .select()
-        .single()
 
-      if (courseError) throw courseError
+      if (requestError) throw requestError
 
-      // Insert lessons
-      const lessonsToInsert = lessons.map((lesson, index) => ({
-        course_id: course.id,
-        title: lesson.title,
-        content: lesson.content,
-        duration: lesson.duration,
-        order_index: index,
-      }))
+      toast({
+        title: "Request submitted",
+        description: "Your course creation request has been sent to administrators for review",
+      })
 
-      const { error: lessonsError } = await supabase.from("course_lessons").insert(lessonsToInsert)
-
-      if (lessonsError) throw lessonsError
-
-      router.push("/courses")
+      router.push("/creator")
     } catch (err: any) {
-      setError(err.message || "Failed to create course")
+      setError(err.message || "Failed to submit course request")
+      toast({
+        title: "Error",
+        description: err.message || "Failed to submit course request",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -175,138 +168,137 @@ export default function CreateCoursePage() {
 
       <section className="bg-muted py-8 border-b border-border">
         <div className="container mx-auto px-4">
-          <h1 className="text-3xl font-bold mb-2">Create New Course</h1>
-          <p className="text-muted-foreground">Design your course with markdown-powered lessons</p>
+          <h1 className="text-3xl font-bold mb-2">Request Course Creation</h1>
+          <p className="text-muted-foreground">Submit your course idea for administrator approval</p>
         </div>
       </section>
 
       <section className="container mx-auto px-4 py-8">
-        <form onSubmit={handleSubmit} className="max-w-4xl space-y-8">
-          {/* Course Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Course Details</CardTitle>
-              <CardDescription>Basic information about your course</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Course Title *</Label>
-                <Input id="title" name="title" placeholder="e.g., Advanced 3D Fashion Design" required />
+        <div className="max-w-2xl mx-auto">
+          <Card className="mb-6 border-blue-200 bg-blue-50/50">
+            <CardContent className="pt-6">
+              <div className="flex gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-blue-900">Approval Required</p>
+                  <p className="text-sm text-blue-700">
+                    Your course creation request will be reviewed by administrators. You'll receive a notification once it's been approved or if any changes are needed.
+                  </p>
+                </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">Description *</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  placeholder="What will students learn in this course?"
-                  rows={3}
-                  required
-                />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Course Information</CardTitle>
+                <CardDescription>Tell us about the course you'd like to create</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="level">Level *</Label>
-                  <select
-                    id="level"
-                    name="level"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  <Label htmlFor="title">Course Title *</Label>
+                  <Input 
+                    id="title" 
+                    name="title" 
+                    placeholder="e.g., Advanced 3D Fashion Design" 
+                    required 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Course Description *</Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    placeholder="Describe what students will learn, the course structure, and any prerequisites..."
+                    rows={6}
                     required
-                  >
-                    <option value="Beginner">Beginner</option>
-                    <option value="Intermediate">Intermediate</option>
-                    <option value="Advanced">Advanced</option>
-                  </select>
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
-                  <Input id="category" name="category" placeholder="e.g., 3D Design" required />
+                  <Input 
+                    id="category" 
+                    name="category" 
+                    placeholder="e.g., 3D Design, Pattern Making, Fashion Business" 
+                    required 
+                  />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Lessons */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Course Lessons</CardTitle>
-                  <CardDescription>Add lessons with markdown content</CardDescription>
+            {/* Lessons */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Course Lessons</CardTitle>
+                    <CardDescription>Add lessons with markdown content</CardDescription>
+                  </div>
+                  <Button type="button" onClick={addLesson} size="sm" variant="outline">
+                    {/* Plus icon here */}
+                  </Button>
                 </div>
-                <Button type="button" onClick={addLesson} size="sm" variant="outline">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Lesson
-                </Button>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {lessons.map((lesson, index) => (
+                  <Card key={lesson.id} className="border-2">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">Lesson {index + 1}</CardTitle>
+                        {lessons.length > 1 && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeLesson(lesson.id)}>
+                            {/* Trash2 icon here */}
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Lesson Title *</Label>
+                          <Input
+                            value={lesson.title}
+                            onChange={(e) => updateLesson(lesson.id, "title", e.target.value)}
+                            placeholder="e.g., Introduction to CLO3D"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Duration *</Label>
+                          <Input
+                            value={lesson.duration}
+                            onChange={(e) => updateLesson(lesson.id, "duration", e.target.value)}
+                            placeholder="e.g., 15 min"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Lesson Content (Markdown) *</Label>
+                        {/* MarkdownEditor component here */}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </CardContent>
+            </Card>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                <p className="text-sm text-destructive">{error}</p>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {lessons.map((lesson, index) => (
-                <Card key={lesson.id} className="border-2">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">Lesson {index + 1}</CardTitle>
-                      {lessons.length > 1 && (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeLesson(lesson.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Lesson Title *</Label>
-                        <Input
-                          value={lesson.title}
-                          onChange={(e) => updateLesson(lesson.id, "title", e.target.value)}
-                          placeholder="e.g., Introduction to CLO3D"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Duration *</Label>
-                        <Input
-                          value={lesson.duration}
-                          onChange={(e) => updateLesson(lesson.id, "duration", e.target.value)}
-                          placeholder="e.g., 15 min"
-                          required
-                        />
-                      </div>
-                    </div>
+            )}
 
-                    <div className="space-y-2">
-                      <Label>Lesson Content (Markdown) *</Label>
-                      <MarkdownEditor
-                        value={lesson.content}
-                        onChange={(value) => updateLesson(lesson.id, "content", value)}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </CardContent>
-          </Card>
-
-          {error && (
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <Button type="submit" disabled={isLoading} className="flex-1">
-              <Save className="w-4 h-4 mr-2" />
-              {isLoading ? "Creating..." : "Create Course"}
+            <Button type="submit" disabled={isLoading} className="w-full">
+              <Send className="w-4 h-4 mr-2" />
+              {isLoading ? "Submitting..." : "Submit for Approval"}
             </Button>
-            <Button type="button" variant="outline" className="flex-1 bg-transparent">
-              <Eye className="w-4 h-4 mr-2" />
-              Preview
-            </Button>
-          </div>
-        </form>
+          </form>
+        </div>
       </section>
     </div>
   )

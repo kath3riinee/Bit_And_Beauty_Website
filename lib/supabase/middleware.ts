@@ -42,6 +42,41 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  if (path.startsWith("/creator")) {
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/login"
+      return NextResponse.redirect(url)
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, is_course_maker")
+      .eq("id", user.id)
+      .single()
+
+    const isCreator = 
+      profile?.role === "admin" || 
+      profile?.role === "administrator" ||
+      profile?.is_course_maker === true
+
+    if (!isCreator) {
+      const url = request.nextUrl.clone()
+      url.pathname = "/apply-instructor"
+      return NextResponse.redirect(url)
+    }
+    
+    if (path.startsWith("/creator/admin")) {
+      const isAdmin = profile?.role === "admin" || profile?.role === "administrator"
+      
+      if (!isAdmin) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/creator"
+        return NextResponse.redirect(url)
+      }
+    }
+  }
+
   if (
     !user &&
     !path.startsWith("/login") &&

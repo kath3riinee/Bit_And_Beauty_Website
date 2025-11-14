@@ -9,11 +9,12 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { User, Bell, Lock, Palette, Save, Upload } from "lucide-react"
+import { User, Bell, Lock, Palette, Save, Upload, Shield } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SiteHeader } from "@/components/site-header"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { Badge } from "@/components/ui/badge"
 
 export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
@@ -30,6 +31,8 @@ export default function SettingsPage() {
     location: "",
     bio: "",
     avatar_url: "",
+    role: "",
+    is_course_maker: false,
   })
 
   const [notifications, setNotifications] = useState({
@@ -93,6 +96,8 @@ export default function SettingsPage() {
           location: profileData.location || "",
           bio: profileData.bio || "",
           avatar_url: profileData.avatar_url || "",
+          role: profileData.role || "",
+          is_course_maker: profileData.is_course_maker || false,
         })
       }
     } catch (error) {
@@ -516,6 +521,39 @@ export default function SettingsPage() {
     }
   }
 
+  const getRoleBadgeVariant = (role: string) => {
+    switch (role) {
+      case "admin":
+        return "destructive"
+      case "course_maker":
+      case "instructor":
+        return "default"
+      case "mentor":
+        return "secondary"
+      default:
+        return "outline"
+    }
+  }
+
+  const getRoleDisplayName = (role: string) => {
+    switch (role) {
+      case "admin":
+        return "Administrator"
+      case "course_maker":
+        return "Course Creator"
+      case "instructor":
+        return "Instructor"
+      case "mentor":
+        return "Mentor"
+      case "business_owner":
+        return "Business Owner"
+      case "student":
+        return "Student"
+      default:
+        return role
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -565,6 +603,53 @@ export default function SettingsPage() {
             </TabsList>
 
             <TabsContent value="profile" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="w-5 h-5" />
+                    Account Type
+                  </CardTitle>
+                  <CardDescription>Your current role and permissions</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">Current Role</p>
+                      <p className="text-2xl font-bold">{getRoleDisplayName(profile.role)}</p>
+                    </div>
+                    <Badge variant={getRoleBadgeVariant(profile.role)} className="text-sm px-3 py-1">
+                      {profile.role.toUpperCase()}
+                    </Badge>
+                  </div>
+                  
+                  {profile.is_course_maker && (
+                    <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                      <Shield className="w-4 h-4 text-primary" />
+                      <p className="text-sm text-primary font-medium">Creator Dashboard Access Enabled</p>
+                    </div>
+                  )}
+                  
+                  {(profile.role === "admin" || profile.is_course_maker) && (
+                    <div className="pt-2">
+                      <Button variant="outline" asChild>
+                        <a href="/creator">Go to Creator Dashboard</a>
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {!profile.is_course_maker && profile.role !== "admin" && (
+                    <div className="pt-2">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Want to create courses and content? Apply to become a creator.
+                      </p>
+                      <Button variant="outline" asChild>
+                        <a href="/apply-instructor">Apply to Become Creator</a>
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle>Profile Information</CardTitle>

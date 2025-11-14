@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Search, MapPin, Briefcase, Award, Users } from "lucide-react"
+import { Search, MapPin, Briefcase, Award, Users, Lock } from 'lucide-react'
 import { createClient } from "@/lib/supabase/client"
 import { SiteHeader } from "@/components/site-header"
 
@@ -15,7 +15,26 @@ export default function ProfilesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [profiles, setProfiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const supabase = createClient()
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        setUser(user)
+      } catch (error) {
+        console.error("[v0] Error checking auth:", error)
+      } finally {
+        setAuthLoading(false)
+      }
+    }
+
+    checkAuth()
+  }, [])
 
   useEffect(() => {
     async function fetchProfiles() {
@@ -41,6 +60,79 @@ export default function ProfilesPage() {
       profile.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       profile.skills?.some((skill: string) => skill.toLowerCase().includes(searchQuery.toLowerCase())),
   )
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteHeader />
+        <div className="flex items-center justify-center min-h-[calc(100vh-80px)]">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteHeader />
+
+        {/* Blurred background content */}
+        <div className="blur-sm pointer-events-none select-none">
+          <section className="bg-muted py-12">
+            <div className="container mx-auto px-4">
+              <div className="max-w-3xl">
+                <h1 className="text-4xl md:text-5xl font-bold mb-4 text-balance">Community Profiles</h1>
+                <p className="text-lg text-muted-foreground text-pretty leading-relaxed mb-6">
+                  Connect with fashion professionals who are mastering technology.
+                </p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input type="text" placeholder="Search..." className="pl-10 bg-card" disabled />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="container mx-auto px-4 py-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i}>
+                  <CardContent className="pt-6 text-center">
+                    <div className="text-2xl font-bold text-primary mb-1">--</div>
+                    <div className="text-sm text-muted-foreground">Loading</div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {/* Auth gate overlay */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/20 backdrop-blur-sm">
+          <Card className="max-w-md mx-4 shadow-2xl border-2">
+            <CardHeader className="text-center pb-4">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-8 h-8 text-primary" />
+              </div>
+              <CardTitle className="text-2xl mb-2">Sign In Required</CardTitle>
+              <CardDescription className="text-base">
+                You must be logged in to view community profiles and connect with other members.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button className="w-full" size="lg" asChild>
+                <Link href="/signup">Create an Account</Link>
+              </Button>
+              <Button className="w-full" variant="outline" size="lg" asChild>
+                <Link href="/login">Log In</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">

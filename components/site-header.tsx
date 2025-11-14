@@ -2,10 +2,10 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Sparkles, Menu, X, LogOut, MessageSquare } from "lucide-react"
+import { Sparkles, Menu, X, LogOut, MessageSquare } from 'lucide-react'
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 
 export function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -59,7 +59,7 @@ export function SiteHeader() {
     router.refresh()
   }
 
-  const isApprovedCreator = profile?.role === "instructor" || profile?.role === "admin"
+  const isApprovedCreator = profile?.role === "admin" || profile?.is_course_maker === true
 
   if (isLoading) {
     return (
@@ -103,14 +103,14 @@ export function SiteHeader() {
                   href="/apply-instructor"
                   className="text-sm font-medium text-foreground hover:text-primary transition-colors"
                 >
-                  Become Instructor
+                  Become Creator
                 </Link>
                 {isApprovedCreator && (
                   <Link
-                    href="/create-course"
+                    href="/creator"
                     className="text-sm font-medium text-foreground hover:text-primary transition-colors"
                   >
-                    Create Course
+                    Creator Dashboard
                   </Link>
                 )}
               </>
@@ -189,15 +189,15 @@ export function SiteHeader() {
                   className="block px-4 py-2 text-sm font-medium text-foreground hover:bg-accent rounded-lg transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  Become Instructor
+                  Become Creator
                 </Link>
                 {isApprovedCreator && (
                   <Link
-                    href="/create-course"
+                    href="/creator"
                     className="block px-4 py-2 text-sm font-medium text-foreground hover:bg-accent rounded-lg transition-colors"
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    Create Course
+                    Creator Dashboard
                   </Link>
                 )}
               </>

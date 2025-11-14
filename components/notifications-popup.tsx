@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bell } from "lucide-react"
+import { Bell } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { cn } from "@/lib/utils"
 
 interface Notification {
@@ -116,6 +116,18 @@ export function NotificationsPopup() {
     if (notification.type === "friend_request") {
       return
     }
+    
+    if (notification.type === "course_request" || 
+        notification.type === "course_request_approved" || 
+        notification.type === "course_request_rejected") {
+      markAsRead(notification.id)
+      if (notification.link) {
+        router.push(notification.link)
+        setIsOpen(false)
+      }
+      return
+    }
+    
     markAsRead(notification.id)
     if (notification.link) {
       router.push(notification.link)
@@ -201,6 +213,23 @@ export function NotificationsPopup() {
     return date.toLocaleDateString()
   }
 
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "course_request":
+        return "📚"
+      case "course_request_approved":
+        return "✅"
+      case "course_request_rejected":
+        return "❌"
+      case "friend_request":
+        return "👥"
+      case "friend_request_accepted":
+        return "🤝"
+      default:
+        return "🔔"
+    }
+  }
+
   if (!user) return null
 
   return (
@@ -243,6 +272,7 @@ export function NotificationsPopup() {
                       className="w-full text-left hover:bg-muted/50 -m-4 p-4 rounded"
                     >
                       <div className="flex items-start gap-3">
+                        <span className="text-2xl flex-shrink-0">{getNotificationIcon(notification.type)}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-medium text-sm truncate">{notification.title}</p>

@@ -131,7 +131,8 @@ export default function SignupPage() {
             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
               <Sparkles className="w-6 h-6 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">FashionTech Academy</span>
+            <span className="text-xl font-bold text-foreground">theAtelier
+</span>
           </Link>
         </div>
       </header>

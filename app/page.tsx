@@ -36,7 +36,8 @@ export default async function HomePage() {
               <span>Free Technology Courses for Fashion Innovators</span>
             </div>
             <h1 className="text-5xl md:text-7xl font-bold text-balance leading-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Bits &amp; Beauty
+              theAtelier
+
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground text-pretty max-w-3xl mx-auto leading-relaxed">
               Learn cutting-edge digital tools, 3D design, AI-powered pattern making, and sustainable tech solutions.
